@@ -23,6 +23,8 @@ screen_cast_iface = 'org.freedesktop.portal.ScreenCast'
 
 pipeline = None
 
+
+desired_light = 2000 # 1 to 65025
 def terminate():
     if pipeline is not None:
         self.player.set_state(Gst.State.NULL)
@@ -88,7 +90,7 @@ def play_pipewire_stream(node_id):
         brightness = cv2.cvtColor(cv2.resize(frame, (100, 100)), cv2.COLOR_BGR2GRAY).mean() # by resizing the image , the program only cost 0.3-0.5w on my r7
         output = int(subprocess.check_output("light -r", shell=True))
 
-        subprocess.call(('light','-S', str(2000//brightness)))
+        subprocess.call(('light','-S', str(desired_light//brightness)))
 
 
 
