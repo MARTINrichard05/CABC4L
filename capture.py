@@ -68,6 +68,12 @@ def on_gst_message(bus, message):
 def play_pipewire_stream(node_id):
     margin = 10
     target = 100
+    checkcnt = 0
+    checkpoint = 1
+    maxcheckpoint = 100
+    immersive_multiplier = 1.8
+    offset = 0
+    mode = 'normal'
     running = True
 
     listener = Listener(address=("localhost", 21827))
@@ -88,6 +94,7 @@ def play_pipewire_stream(node_id):
 
     # Read and display frames from the pipeline
     conn = listener.accept()
+    backlight = int(subprocess.check_output("light -r", shell=True))
     while running:
         while conn.poll():
             msg = conn.recv()
@@ -99,37 +106,53 @@ def play_pipewire_stream(node_id):
                 margin = int(msg[1])
             elif msg[0] == "target":
                 target = int(msg[1])
-
         ret, frame = cap.read()
 
         if not ret:
+            print('=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=')
             break
 
+
         # Calculate the overall image of the grayscale frame cv2.resize(frame, (100, 100))
-        image = int(cv2.cvtColor(cv2.resize(frame, (200, 200)), cv2.COLOR_BGR2GRAY).mean()) # by resizing the image , the program only cost 0.3-0.5w on my r7
-        backlight = int(subprocess.check_output("light -r", shell=True))
+        image = float(cv2.cvtColor(cv2.resize(frame, (200, 200)), cv2.COLOR_BGR2GRAY).mean()) # by resizing the image , the program only cost 0.3-0.5w on my r7
+        if checkcnt >= checkpoint:
+            checkcnt = 0
+            buff = int(subprocess.check_output("light -r", shell=True))
+            if buff == backlight:
+                if checkpoint != maxcheckpoint:
+                    checkpoint = maxcheckpoint
+                else:
+                    pass
+            else :
+                checkpoint = 1
+                print('something is wrong, backlight is : '+str(buff) + ' instead of '+str(backlight)+', trying to set again')
+                backlight = buff
         #print("target : "+str(target)+" Content: "+str(image)+ " backlight: "+str(backlight))
-        if image == 0:
-            if backlight == 0:
-                print("No image")
-                pass
+        if mode == 'normal':
+            if int(image) <= 1:
+                if backlight == 0:
+                    pass
+                else:
+                    subprocess.call(('light', '-S', '-r', str(0)))
+                    backlight = 0
+
+            elif abs((backlight*image)//255 - target) > margin:
+                val = int((target/image)*255)
+                if val > 255:
+                    subprocess.call(('light', '-S', '-r', '255'))
+                    backlight = 255
+                else:
+                    subprocess.call(('light','-S', '-r', str(val)))
+                    backlight = val
+        elif mode == 'immersive':
+            if int(image*immersive_multiplier)+offset > 255:
+                subprocess.call(('light', '-S', '-r', str(255)))
+                backlight = 255
             else:
-                print("Black color on screen, turning backlight at min")
-                subprocess.call(('light', '-S', '-r', str(0)))
-
-        elif abs((backlight*image)//255 - target) > margin:
-            val = int((target/image)*255)
-            if val > 255:
-                subprocess.call(('light', '-S', '-r', '255'))
-            else:
-                print("change")
-                subprocess.call(('light','-S', '-r', str((target/image)*255)))
-        else:
-            print('no change')
-
-
-
-
+                backlight = int(image*immersive_multiplier+offset)
+                subprocess.call(('light','-S', '-r', str(backlight)))
+            print(backlight)
+        checkcnt += 1
     # Release the VideoCapture object and close windows
     cap.release()
     cv2.destroyAllWindows()
