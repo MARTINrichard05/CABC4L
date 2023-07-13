@@ -17,9 +17,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.NormalBox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.ImmersiveBox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
-        #self.lightbar = Gtk.LevelBar(orientation=Gtk.Orientation.HORIZONTAL)
-        #self.lightbar.set_min_value(0)
-        #self.lightbar.set_max_value(255)
+        self.lightbar = Gtk.LevelBar(orientation=Gtk.Orientation.HORIZONTAL)
+        self.lightbar.set_min_value(0)
+        self.lightbar.set_max_value(255)
 
         self.set_child(self.Mainbox)
         self.initModeSelect()
