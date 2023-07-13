@@ -84,7 +84,7 @@ def play_pipewire_stream(node_id):
     fd_object = portal.OpenPipeWireRemote(session, empty_dict,
                                           dbus_interface=screen_cast_iface)
     fd = fd_object.take()
-    pipeline_string = 'pipewiresrc fd=%d path=%u ! videoconvert ! appsink'
+    pipeline_string = 'pipewiresrc fd=%d path=%u ! videoconvert ! xvimagesink'
 
     # Create a VideoCapture object with GStreamer pipeline
     cap = cv2.VideoCapture(pipeline_string % (fd, node_id), cv2.CAP_GSTREAMER)
