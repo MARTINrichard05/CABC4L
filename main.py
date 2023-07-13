@@ -139,7 +139,7 @@ class MainWindow(Gtk.ApplicationWindow):
                         self.Mainbox.append(self.lightbar)
                     except:
                         self.Mainbox.append(self.lightbar)
-                sleep(0.03)
+                sleep(0.08)
             sleep(0.5)
 
     def initOffset(self):
