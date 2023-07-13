@@ -14,5 +14,6 @@ Pgui = Process(target=gui)
 Pdaemon.start()
 sleep(0.5)
 Pgui.start()
-Pdaemon.join()
 Pgui.join()
+Pdaemon.close()
+

@@ -12,6 +12,7 @@ import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import GObject, Gst
 from multiprocessing.connection import Listener
+from time import sleep
 
 DBusGMainLoop(set_as_default=True)
 Gst.init(None)
@@ -73,10 +74,11 @@ def play_pipewire_stream(node_id):
     maxcheckpoint = 100
     immersive_multiplier = 1.8
     offset = 0
-    mode = 'normal'
+    mode = 'disabled'
     running = True
 
     listener = Listener(address=("localhost", 21827))
+    blistener = Listener(address=("localhost", 21828))
 
     empty_dict = dbus.Dictionary(signature="sv")
     fd_object = portal.OpenPipeWireRemote(session, empty_dict,
@@ -94,11 +96,11 @@ def play_pipewire_stream(node_id):
 
     # Read and display frames from the pipeline
     conn = listener.accept()
+    connb = blistener.accept()
     backlight = int(subprocess.check_output("light -r", shell=True))
     while running:
         while conn.poll():
             msg = conn.recv()
-            print(f"got message: {msg}")
 
             if msg == "EXIT":
                 running = False
@@ -106,53 +108,66 @@ def play_pipewire_stream(node_id):
                 margin = int(msg[1])
             elif msg[0] == "target":
                 target = int(msg[1])
-        ret, frame = cap.read()
+            elif msg[0] == "mode":
+                mode = str(msg[1])
+            elif msg[0] == "offset":
+                offset = int(msg[1])
+            elif msg[0] == "multiplier":
+                immersive_multiplier = float(msg[1])
+        if mode != "disabled":
+            while connb.poll():
+                msg = connb.recv()
+                if msg == "value":
+                    connb.send(backlight)
+            ret, frame = cap.read()
 
-        if not ret:
-            print('=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=')
-            break
+            if not ret:
+                print('=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=')
+                break
 
 
-        # Calculate the overall image of the grayscale frame cv2.resize(frame, (100, 100))
-        image = float(cv2.cvtColor(cv2.resize(frame, (200, 200)), cv2.COLOR_BGR2GRAY).mean()) # by resizing the image , the program only cost 0.3-0.5w on my r7
-        if checkcnt >= checkpoint:
-            checkcnt = 0
-            buff = int(subprocess.check_output("light -r", shell=True))
-            if buff == backlight:
-                if checkpoint != maxcheckpoint:
-                    checkpoint = maxcheckpoint
-                else:
-                    pass
-            else :
-                checkpoint = 1
-                print('something is wrong, backlight is : '+str(buff) + ' instead of '+str(backlight)+', trying to set again')
-                backlight = buff
-        #print("target : "+str(target)+" Content: "+str(image)+ " backlight: "+str(backlight))
-        if mode == 'normal':
-            if int(image) <= 1:
-                if backlight == 0:
-                    pass
-                else:
-                    subprocess.call(('light', '-S', '-r', str(0)))
-                    backlight = 0
+            # Calculate the overall image of the grayscale frame cv2.resize(frame, (100, 100))
+            image = float(cv2.cvtColor(cv2.resize(frame, (200, 200)), cv2.COLOR_BGR2GRAY).mean()) # by resizing the image , the program only cost 0.3-0.5w on my r7
+            if checkcnt >= checkpoint:
+                checkcnt = 0
+                buff = int(subprocess.check_output("light -r", shell=True))
+                if buff == backlight:
+                    if checkpoint != maxcheckpoint:
+                        checkpoint = maxcheckpoint
+                    else:
+                        pass
+                else :
+                    checkpoint = 1
+                    print('something is wrong, backlight is : '+str(buff) + ' instead of '+str(backlight)+', trying to set again')
+                    backlight = buff
+            #print("target : "+str(target)+" Content: "+str(image)+ " backlight: "+str(backlight))
+            if mode == 'normal':
+                if int(image) <= 1:
+                    if backlight == 0:
+                        pass
+                    else:
+                        subprocess.call(('light', '-S', '-r', str(0)))
+                        backlight = 0
 
-            elif abs((backlight*image)//255 - target) > margin:
-                val = int((target/image)*255)
-                if val > 255:
-                    subprocess.call(('light', '-S', '-r', '255'))
+                elif abs((backlight*image)//255 - target) > margin:
+                    val = int((target/image)*255)
+                    if val > 255:
+                        subprocess.call(('light', '-S', '-r', '255'))
+                        backlight = 255
+                    else:
+                        subprocess.call(('light','-S', '-r', str(val)))
+                        backlight = val
+            elif mode == 'immersive':
+                if int(image*immersive_multiplier)+offset > 255:
+                    subprocess.call(('light', '-S', '-r', str(255)))
                     backlight = 255
                 else:
-                    subprocess.call(('light','-S', '-r', str(val)))
-                    backlight = val
-        elif mode == 'immersive':
-            if int(image*immersive_multiplier)+offset > 255:
-                subprocess.call(('light', '-S', '-r', str(255)))
-                backlight = 255
-            else:
-                backlight = int(image*immersive_multiplier+offset)
-                subprocess.call(('light','-S', '-r', str(backlight)))
-            print(backlight)
-        checkcnt += 1
+                    backlight = int(image*immersive_multiplier+offset)
+                    subprocess.call(('light','-S', '-r', str(backlight)))
+                #print(backlight)
+            checkcnt += 1
+        else:
+            sleep(0.5)
     # Release the VideoCapture object and close windows
     cap.release()
     cv2.destroyAllWindows()
