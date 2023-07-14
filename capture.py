@@ -25,11 +25,13 @@ screen_cast_iface = 'org.freedesktop.portal.ScreenCast'
 
 pipeline = None
 
+desired_light = 1500  # 1 to 65025
 
-desired_light = 1500 # 1 to 65025
+portal = bus.get_object('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop')
+
 def terminate():
     if pipeline is not None:
-        self.player.set_state(Gst.State.NULL)
+        pipeline.set_state(Gst.State.NULL)
     loop.quit()
 
 request_token_counter = 0
@@ -39,15 +41,15 @@ sender_name = re.sub(r'\.', r'_', bus.get_unique_name()[1:])
 def new_request_path():
     global request_token_counter
     request_token_counter = request_token_counter + 1
-    token = 'u%d'%request_token_counter
-    path = '/org/freedesktop/portal/desktop/request/%s/%s'%(sender_name, token)
+    token = 'u%d' % request_token_counter
+    path = '/org/freedesktop/portal/desktop/request/%s/%s' % (sender_name, token)
     return (path, token)
 
 def new_session_path():
     global session_token_counter
     session_token_counter = session_token_counter + 1
-    token = 'u%d'%session_token_counter
-    path = '/org/freedesktop/portal/desktop/session/%s/%s'%(sender_name, token)
+    token = 'u%d' % session_token_counter
+    path = '/org/freedesktop/portal/desktop/session/%s/%s' % (sender_name, token)
     return (path, token)
 
 def screen_cast_call(method, callback, *args, options={}):
@@ -58,7 +60,7 @@ def screen_cast_call(method, callback, *args, options={}):
                             'org.freedesktop.portal.Desktop',
                             request_path)
     options['handle_token'] = request_token
-    method(*(args + (options, )),
+    method(*(args + (options,)),
            dbus_interface=screen_cast_iface)
 
 def on_gst_message(bus, message):
@@ -67,6 +69,7 @@ def on_gst_message(bus, message):
         terminate()
 
 def play_pipewire_stream(node_id):
+
     margin = 10
     target = 100
     checkcnt = 0
@@ -81,10 +84,11 @@ def play_pipewire_stream(node_id):
     blistener = Listener(address=("localhost", 21828))
 
     empty_dict = dbus.Dictionary(signature="sv")
-    fd_object = portal.OpenPipeWireRemote(session, empty_dict,
-                                          dbus_interface=screen_cast_iface)
+    portal = bus.get_object('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop')
+    fd_object = portal.OpenPipeWireRemote(session, empty_dict, dbus_interface=screen_cast_iface)
     fd = fd_object.take()
-    pipeline_string = 'pipewiresrc fd=%d path=%u ! videoconvert ! xvimagesink'
+    pipeline_string = 'pipewiresrc fd=%d path=%u ! videoconvert ! appsink sync=false'
+    badpipeline_string = 'pipewiresrc fd=%d path=%u ! videoconvert ! framerate=60/1 ! appsink sync=false'
 
     # Create a VideoCapture object with GStreamer pipeline
     cap = cv2.VideoCapture(pipeline_string % (fd, node_id), cv2.CAP_GSTREAMER)
@@ -125,9 +129,8 @@ def play_pipewire_stream(node_id):
                 print('=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=')
                 break
 
-
-            # Calculate the overall image of the grayscale frame cv2.resize(frame, (100, 100))
-            image = float(cv2.cvtColor(cv2.resize(frame, (200, 200)), cv2.COLOR_BGR2GRAY).mean()) # by resizing the image , the program only cost 0.3-0.5w on my r7
+            # Calculate the overall image of the grayscale frame
+            image = float(cv2.cvtColor(cv2.resize(frame, (200, 200)), cv2.COLOR_BGR2GRAY).mean())
             if checkcnt >= checkpoint:
                 checkcnt = 0
                 buff = int(subprocess.check_output("light -r", shell=True))
@@ -136,11 +139,11 @@ def play_pipewire_stream(node_id):
                         checkpoint = maxcheckpoint
                     else:
                         pass
-                else :
+                else:
                     checkpoint = 1
-                    print('something is wrong, backlight is : '+str(buff) + ' instead of '+str(backlight)+', trying to set again')
+                    print('something is wrong, backlight is: ' + str(buff) + ' instead of ' + str(backlight) + ', trying to set again')
                     backlight = buff
-            #print("target : "+str(target)+" Content: "+str(image)+ " backlight: "+str(backlight))
+
             if mode == 'normal':
                 if int(image) <= 1:
                     if backlight == 0:
@@ -149,25 +152,27 @@ def play_pipewire_stream(node_id):
                         subprocess.call(('light', '-S', '-r', str(0)))
                         backlight = 0
 
-                elif abs((backlight*image)//255 - target) > margin:
-                    val = int((target/image)*255)
+                elif abs((backlight * image) // 255 - target) > margin:
+                    val = int((target / image) * 255)
                     if val > 255:
                         subprocess.call(('light', '-S', '-r', '255'))
                         backlight = 255
                     else:
-                        subprocess.call(('light','-S', '-r', str(val)))
+                        subprocess.call(('light', '-S', '-r', str(val)))
                         backlight = val
+
             elif mode == 'immersive':
-                if int(image*immersive_multiplier)+offset > 255:
+                if int(image * immersive_multiplier) + offset > 255:
                     subprocess.call(('light', '-S', '-r', str(255)))
                     backlight = 255
                 else:
-                    backlight = int(image*immersive_multiplier+offset)
-                    subprocess.call(('light','-S', '-r', str(backlight)))
-                #print(backlight)
+                    backlight = int(image * immersive_multiplier + offset)
+                    subprocess.call(('light', '-S', '-r', str(backlight)))
+
             checkcnt += 1
         else:
             sleep(0.5)
+
     # Release the VideoCapture object and close windows
     cap.release()
     cv2.destroyAllWindows()
@@ -175,7 +180,7 @@ def play_pipewire_stream(node_id):
 
 def on_start_response(response, results):
     if response != 0:
-        print("Failed to start: %s"%response)
+        print("Failed to start: %s" % response)
         terminate()
         return
 
@@ -185,8 +190,9 @@ def on_start_response(response, results):
         play_pipewire_stream(node_id)
 
 def on_select_sources_response(response, results):
+    portal = bus.get_object('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop')
     if response != 0:
-        print("Failed to select sources: %d"%response)
+        print("Failed to select sources: %d" % response)
         terminate()
         return
 
@@ -196,26 +202,24 @@ def on_select_sources_response(response, results):
                      session, '')
 
 def on_create_session_response(response, results):
+    portal = bus.get_object('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop')
     if response != 0:
-        print("Failed to create session: %d"%response)
+        print("Failed to create session: %d" % response)
         terminate()
         return
 
     global session
     session = results['session_handle']
-    print("session %s created"%session)
+    print("session %s created" % session)
 
     screen_cast_call(portal.SelectSources, on_select_sources_response,
                      session,
-                     options={ 'multiple': False,
-                               'types': dbus.UInt32(1|2) })
-
-portal = bus.get_object('org.freedesktop.portal.Desktop',
-                             '/org/freedesktop/portal/desktop')
+                     options={'multiple': False,
+                              'types': dbus.UInt32(1 | 2)})
 
 (session_path, session_token) = new_session_path()
 screen_cast_call(portal.CreateSession, on_create_session_response,
-                 options={ 'session_handle_token': session_token })
+                 options={'session_handle_token': session_token})
 
 try:
     loop.run()

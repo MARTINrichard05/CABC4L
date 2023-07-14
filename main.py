@@ -49,8 +49,8 @@ class MainWindow(Gtk.ApplicationWindow):
                 pass
         self.connect("close-request", self.closea)
 
-        #Bart = Thread(target=self.bars)
-        #Bart.start()
+        Bart = Thread(target=self.bars)
+        Bart.start()
 
     def closea(self,arg):
         self.brunning = False
